@@ -19,36 +19,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  quality-preflight:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Install root dependencies
-        run: bun install
-
-      - name: Install desktop dependencies
-        working-directory: desktop
-        run: bun install
-
-      - name: Install adapter dependencies
-        working-directory: adapters
-        run: bun install
-
-      - name: Verify PR-quality gate before release packaging
-        run: bun run verify
-
   signing-preflight:
     runs-on: ubuntu-latest
     outputs:
@@ -93,7 +63,6 @@ jobs:
 
   build:
     needs:
-      - quality-preflight
       - signing-preflight
     strategy:
       fail-fast: false

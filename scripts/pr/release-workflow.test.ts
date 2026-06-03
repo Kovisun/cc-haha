@@ -12,12 +12,13 @@ describe('release desktop workflow', () => {
     )?.[0]
   }
 
-  test('build job waits for a PR-quality preflight before packaging', () => {
+  test('release packaging does not run the PR-quality gate', () => {
     const workflow = readReleaseWorkflow()
 
-    expect(workflow).toContain('quality-preflight:')
-    expect(workflow).toContain('run: bun run verify')
-    expect(workflow).toContain('- quality-preflight')
+    // Quality gates run on PRs, not at release time: tagging should not be
+    // blocked by `bun run verify`. Releasing is gated on the tag only.
+    expect(workflow).not.toContain('quality-preflight')
+    expect(workflow).not.toContain('bun run verify')
     expect(workflow).toContain('name: Build (${{ matrix.label }})')
   })
 
@@ -144,7 +145,6 @@ describe('release desktop workflow', () => {
     expect(macRequiredBlock).not.toContain('exit 1')
     expect(windowsOptionalBlock).toContain('::warning::')
     expect(windowsOptionalBlock).not.toContain('exit 1')
-    expect(buildJob).toContain('- quality-preflight')
     expect(buildJob).toContain('- signing-preflight')
     expect(workflow.indexOf('signing-preflight:')).toBeLessThan(workflow.indexOf('build:'))
     expect(workflow.indexOf('signing-preflight:')).toBeLessThan(workflow.indexOf('Upload release artifacts for final publish'))
