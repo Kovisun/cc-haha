@@ -197,7 +197,7 @@ export async function pollWechatLoginWithQr(opts: {
   }
 
   const rawStatus = await pollQrStatus(login.currentApiBaseUrl, login.qrcode)
-  const status = rawStatus.status?.toLowerCase().trim() ?? ''
+  const status = (rawStatus.status ?? '').toLowerCase().trim()
   switch (status) {
     case 'wait':
       return { connected: false, status: 'wait', message: '等待扫码。' }
