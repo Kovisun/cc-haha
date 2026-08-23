@@ -228,9 +228,20 @@ async function flushToTelegram(chatId: string, newText: string, isComplete: bool
       const chunks = splitMessage(formatTelegramOutboundText(fullText), TELEGRAM_TEXT_LIMIT)
       try {
         await bot.api.editMessageText(numericChatId, placeholder.messageId, chunks[0]!)
-      } catch { /* ignore */ }
+      } catch (err) {
+        console.error('[Telegram] editMessageText (complete) failed, sending as new message:', err instanceof Error ? err.message : err)
+        try {
+          await bot.api.sendMessage(numericChatId, chunks[0]!)
+        } catch (sendErr) {
+          console.error('[Telegram] fallback sendMessage (complete chunk 0) failed:', sendErr instanceof Error ? sendErr.message : sendErr)
+        }
+      }
       for (let i = 1; i < chunks.length; i++) {
-        await bot.api.sendMessage(numericChatId, chunks[i]!)
+        try {
+          await bot.api.sendMessage(numericChatId, chunks[i]!)
+        } catch (err) {
+          console.error('[Telegram] sendMessage (complete chunk) failed:', err instanceof Error ? err.message : err)
+        }
       }
     } else {
       const { sealedChunks, activeChunk } = planTelegramStreamingUpdate(
@@ -239,29 +250,58 @@ async function flushToTelegram(chatId: string, newText: string, isComplete: bool
         TELEGRAM_STREAMING_TEXT_LIMIT,
       )
       accumulatedText.set(chatId, activeChunk)
-      try {
-        const firstSealedChunk = sealedChunks.shift()
-        if (firstSealedChunk) {
-          const firstSealedFormattedChunks = splitMessage(
-            formatTelegramOutboundText(firstSealedChunk),
-            TELEGRAM_TEXT_LIMIT,
-          )
+      const firstSealedChunk = sealedChunks.shift()
+      if (firstSealedChunk) {
+        const firstSealedFormattedChunks = splitMessage(
+          formatTelegramOutboundText(firstSealedChunk),
+          TELEGRAM_TEXT_LIMIT,
+        )
+        try {
           await bot.api.editMessageText(numericChatId, placeholder.messageId, firstSealedFormattedChunks[0]!)
-          for (let i = 1; i < firstSealedFormattedChunks.length; i++) {
-            await bot.api.sendMessage(numericChatId, firstSealedFormattedChunks[i]!)
+        } catch (err) {
+          console.error('[Telegram] editMessageText (streaming) failed, sending as new message:', err instanceof Error ? err.message : err)
+          try {
+            await bot.api.sendMessage(numericChatId, firstSealedFormattedChunks[0]!)
+          } catch (sendErr) {
+            console.error('[Telegram] fallback sendMessage (streaming chunk 0) failed:', sendErr instanceof Error ? sendErr.message : sendErr)
           }
-          for (const chunk of sealedChunks) {
-            const formattedChunks = splitMessage(formatTelegramOutboundText(chunk), TELEGRAM_TEXT_LIMIT)
-            for (const formattedChunk of formattedChunks) {
+        }
+        for (let i = 1; i < firstSealedFormattedChunks.length; i++) {
+          try {
+            await bot.api.sendMessage(numericChatId, firstSealedFormattedChunks[i]!)
+          } catch (err) {
+            console.error('[Telegram] sendMessage (streaming sealed) failed:', err instanceof Error ? err.message : err)
+          }
+        }
+        for (const chunk of sealedChunks) {
+          const formattedChunks = splitMessage(formatTelegramOutboundText(chunk), TELEGRAM_TEXT_LIMIT)
+          for (const formattedChunk of formattedChunks) {
+            try {
               await bot.api.sendMessage(numericChatId, formattedChunk)
+            } catch (err) {
+              console.error('[Telegram] sendMessage (streaming sealed) failed:', err instanceof Error ? err.message : err)
             }
           }
+        }
+        try {
           const sent = await bot.api.sendMessage(numericChatId, formatTelegramStreamingText(activeChunk))
           placeholders.set(chatId, { chatId, messageId: sent.message_id })
-        } else {
-          await bot.api.editMessageText(numericChatId, placeholder.messageId, formatTelegramStreamingText(activeChunk))
+        } catch (err) {
+          console.error('[Telegram] sendMessage (streaming active) failed:', err instanceof Error ? err.message : err)
         }
-      } catch { /* ignore */ }
+      } else {
+        try {
+          await bot.api.editMessageText(numericChatId, placeholder.messageId, formatTelegramStreamingText(activeChunk))
+        } catch (err) {
+          console.error('[Telegram] editMessageText (streaming single) failed, sending as new message:', err instanceof Error ? err.message : err)
+          try {
+            const sent = await bot.api.sendMessage(numericChatId, formatTelegramStreamingText(activeChunk))
+            placeholders.set(chatId, { chatId, messageId: sent.message_id })
+          } catch (sendErr) {
+            console.error('[Telegram] fallback sendMessage (streaming single) failed:', sendErr instanceof Error ? sendErr.message : sendErr)
+          }
+        }
+      }
     }
   } else if (isComplete && (prev + newText).trim()) {
     const fullText = prev + newText
@@ -475,13 +515,24 @@ async function handleServerMessage(chatId: string, msg: ServerMessage): Promise<
       if (placeholders.has(chatId)) {
         const text = accumulatedText.get(chatId)
         if (text?.trim()) {
+          const chunks = splitMessage(formatTelegramOutboundText(text), TELEGRAM_TEXT_LIMIT)
           try {
-            const chunks = splitMessage(formatTelegramOutboundText(text), TELEGRAM_TEXT_LIMIT)
             await bot.api.editMessageText(numericChatId, placeholders.get(chatId)!.messageId, chunks[0]!)
-            for (let i = 1; i < chunks.length; i++) {
-              await bot.api.sendMessage(numericChatId, chunks[i]!)
+          } catch (err) {
+            console.error('[Telegram] editMessageText (message_complete) failed, sending as new message:', err instanceof Error ? err.message : err)
+            try {
+              await bot.api.sendMessage(numericChatId, chunks[0]!)
+            } catch (sendErr) {
+              console.error('[Telegram] fallback sendMessage (message_complete chunk 0) failed:', sendErr instanceof Error ? sendErr.message : sendErr)
             }
-          } catch { /* ignore */ }
+          }
+          for (let i = 1; i < chunks.length; i++) {
+            try {
+              await bot.api.sendMessage(numericChatId, chunks[i]!)
+            } catch (err) {
+              console.error('[Telegram] sendMessage (message_complete chunk) failed:', err instanceof Error ? err.message : err)
+            }
+          }
         }
         placeholders.delete(chatId)
         accumulatedText.delete(chatId)
